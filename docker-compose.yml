@@ -1,0 +1,11 @@
+version: "3.9"
+services:
+  agent:
+    build: .
+    image: smart-agent
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/data
+    command: ["api"]

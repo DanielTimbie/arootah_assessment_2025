@@ -1,0 +1,3 @@
+Goal: Given a user research request, produce a JSON plan of tool calls.
+Return a `plan` with steps of these types: [web_search, arxiv_search]. Each step has a `query` and `k` results to fetch. Keep total k ≤ 12.
+Also return `rationale` (1 short sentence) and `stop_condition` (what success looks like).

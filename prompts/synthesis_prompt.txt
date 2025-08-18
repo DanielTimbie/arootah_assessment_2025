@@ -1,0 +1,8 @@
+Write a concise executive brief from the provided source notes.
+Output sections:
+1. Title
+2. Two‑level outline (section -> bullets)
+3. Key Takeaways (≤ 5 bullets)
+4. Narrative summary with inline numeric citations [n]
+5. References list [n] Author, Title, Source, Year, URL
+Keep it factual. No fluff. Do not include your chain of thought.
