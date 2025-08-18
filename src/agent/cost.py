@@ -10,7 +10,10 @@ class TokenTotals:
         return self.prompt + self.completion
 
 MODEL_PRICES = {
-    "gpt-4o-mini": {"input": float(0.0), "output": float(0.0)},
+    "gpt-4o-mini": {"input": 0.000150, "output": 0.000600},
+    "gpt-4o": {"input": 0.002500, "output": 0.010000},
+    "text-embedding-3-small": {"input": 0.000020, "output": 0.0},
+    "text-embedding-3-large": {"input": 0.000130, "output": 0.0},
 }
 
 def estimate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> float:
