@@ -2,10 +2,13 @@ version: "3.9"
 services:
   agent:
     build: .
-    image: smart-agent
+    image: research-agent
     env_file: .env
     ports:
       - "8000:8000"
     volumes:
-      - ./data:/data
+      - agent_data:/data
     command: ["api"]
+
+volumes:
+  agent_data:
