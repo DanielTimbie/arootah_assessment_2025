@@ -1,7 +1,8 @@
 """fastapi server for research agent."""
 from __future__ import annotations
 
-import uuid
+import hashlib
+import time
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING
 
@@ -77,7 +78,8 @@ app = FastAPI(title="Smart Research Agent", lifespan=lifespan)
 @app.post("/research")
 async def research(req: ResearchReq) -> ResearchResponse:
     """execute research request and return results."""
-    run_id = str(uuid.uuid4())
+    day_hash = hashlib.md5(f"{req.prompt}:{_get_day_bucket()}".encode()).hexdigest()[:8]  # noqa: S324
+    run_id = f"run-{day_hash}"
     plan = make_plan(req.prompt)
     sources = execute(plan)
     res = synthesize(req.prompt, sources, run_id)
@@ -103,6 +105,10 @@ async def get_metrics(hours: int = 24) -> MetricsResponse:
     """get system metrics from langsmith."""
     metrics_data = get_langsmith_metrics(hours=hours)
     return MetricsResponse(**metrics_data)
+
+def _get_day_bucket() -> str:
+    """Get current day bucket for idempotency."""
+    return str(int(time.time() // 86400))  # 24hr buckets
 
 def run_api(host: str, port: int) -> None:
     """start uvicorn server."""

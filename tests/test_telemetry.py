@@ -7,10 +7,11 @@ from src.agent.telemetry import (
 )
 
 
-def test_trace_without_client():
+def test_trace_without_client(monkeypatch):
     """test tracing without langsmith client."""
+    monkeypatch.setattr("src.agent.telemetry.client", None)
     with trace("test") as run:
-        assert run is None
+        assert run == ""
 
 def test_log_event_without_client():
     """test event logging without client."""

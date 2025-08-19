@@ -28,6 +28,15 @@ class Source(BaseModel):
     snippet: str
     content: str
 
+class BriefStructure(BaseModel):
+    """structured executive brief output."""
+
+    title: str
+    outline: dict[str, list[str]]  # section -> bullets
+    key_takeaways: list[str]  # max 5
+    executive_summary: str
+    references: list[str]
+
 class AgentResult(BaseModel):
     """final agent output with sources and metrics."""
 

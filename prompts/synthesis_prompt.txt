@@ -1,8 +1,39 @@
-Write a concise executive brief from the provided source notes.
-Output sections:
-1. Title
-2. Two‑level outline (section -> bullets)
-3. Key Takeaways (≤ 5 bullets)
-4. Narrative summary with inline numeric citations [n]
-5. References list [n] Author, Title, Source, Year, URL
-Keep it factual. No fluff. Do not include your chain of thought.
+## Task: Executive Brief Synthesis
+
+Transform the provided source materials into a structured executive brief. Return JSON with the following structure:
+
+```json
+{
+  "title": "Clear, specific title reflecting the research topic",
+  "outline": {
+    "Section Name 1": [
+      "Key bullet point with citation [n]",
+      "Another bullet point [n]"
+    ],
+    "Section Name 2": [
+      "Bullet point [n]",
+      "Another point [n]"
+    ]
+  },
+  "key_takeaways": [
+    "Critical insight for decision-makers [n]",
+    "Strategic implication [n]",
+    "Maximum 5 takeaways total"
+  ],
+  "executive_summary": "2-3 paragraph narrative with inline citations [n]. Professional, analytical tone suitable for senior leadership. Every factual claim must include [n] reference.",
+  "references": [
+    "[1] Author/Organization, Title, Source, Year, URL",
+    "[2] Author/Organization, Title, Source, Year, URL"
+  ]
+}
+```
+
+**Requirements:**
+- Professional, executive-appropriate tone
+- Every factual claim must include [n] citation
+- 3-5 outline sections with 2-4 bullets each
+- Maximum 5 key takeaways
+- Focus on actionable insights for strategic decisions
+- No speculation or unsupported claims
+
+Now synthesize the provided sources:

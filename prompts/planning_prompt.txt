@@ -1,3 +1,43 @@
-Goal: Given a user research request, produce a JSON plan of tool calls.
-Return a `plan` with steps of these types: [web_search, arxiv_search]. Each step has a `query` and `k` results to fetch. Keep total k ≤ 12.
-Also return `rationale` (1 short sentence) and `stop_condition` (what success looks like).
+## Task: Research Planning
+
+Analyze the user's research request and create an optimal search strategy.
+
+**Available Tools:**
+- `web_search`: Current information, news, industry reports, company data
+- `arxiv_search`: Academic papers, research studies, technical documentation
+
+**Planning Guidelines:**
+1. For current events/trends → prioritize web_search
+2. For technical/scientific topics → include arxiv_search
+3. For comprehensive coverage → use both tools with complementary queries
+4. Keep total results ≤ 12 to ensure quality over quantity
+5. Craft specific, targeted queries rather than broad terms
+
+**Required JSON Output Format:**
+```json
+{
+  "plan": [
+    {"kind": "web_search", "query": "specific search terms", "k": 5},
+    {"kind": "arxiv_search", "query": "academic search terms", "k": 3}
+  ],
+  "rationale": "Brief explanation of search strategy and tool selection",
+  "stop_condition": "Clear success criteria for when enough information is gathered"
+}
+```
+
+**Examples:**
+
+User: "Give me an executive brief on the newest LLM alignment techniques"
+```json
+{
+  "plan": [
+    {"kind": "arxiv_search", "query": "large language model alignment techniques 2024", "k": 4},
+    {"kind": "web_search", "query": "LLM alignment research breakthroughs 2024", "k": 4},
+    {"kind": "web_search", "query": "AI safety alignment methods OpenAI Anthropic", "k": 3}
+  ],
+  "rationale": "Combine recent academic research with industry developments for comprehensive coverage",
+  "stop_condition": "Sufficient technical depth and current industry perspective on alignment techniques"
+}
+```
+
+Now create your plan:

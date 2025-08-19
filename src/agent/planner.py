@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from openai import OpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from .config import settings
 from .models import Plan
@@ -62,14 +63,12 @@ def make_plan(user_prompt: str) -> Plan:
                 "thought": (
                     f"Requesting LLM to create search plan using "
                     f"{settings.openai_model} "
-                    f"with temperature 0.2 for consistent results"
+                    f"with structured JSON output"
                 )
             },
         )
 
-        resp = client.chat.completions.create(
-            model=settings.openai_model, messages=msg, temperature=0.2
-        )
+        resp = _create_plan_with_retry(msg)
         content = resp.choices[0].message.content
 
         content_len = len(content) if content else 0
@@ -144,3 +143,13 @@ def make_plan(user_prompt: str) -> Plan:
             outputs={"content": content},
         )
         return plan
+
+@retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3))
+def _create_plan_with_retry(messages: list) -> object:
+    """Create plan with retry logic."""
+    return client.chat.completions.create(
+        model=settings.openai_model,
+        messages=messages,
+        temperature=0,
+        response_format={"type": "json_object"}
+    )

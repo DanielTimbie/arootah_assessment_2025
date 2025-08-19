@@ -1,20 +1,25 @@
 """Test executor functionality."""
 from src.agent.executor import execute
+from src.agent.memory import SqliteMemory
 from src.agent.models import Plan, ToolStep
+from src.agent.tools.arxiv_search import ArxivTool
+from src.agent.tools.fetcher import Fetcher
+from src.agent.tools.web_search import WebSearchTool
 
 
 def test_execute_smoke(monkeypatch):
     """Test basic executor functionality with mocked dependencies."""
-    from src.agent.memory import SqliteMemory
-    from src.agent.tools.arxiv_search import ArxivTool
-    from src.agent.tools.fetcher import Fetcher
-    from src.agent.tools.web_search import WebSearchTool
 
-    # Mock search tools
+    class MockResult:
+        def __init__(self, title, url, snippet) -> None:
+            self.title = title
+            self.url = url
+            self.snippet = snippet
+
     monkeypatch.setattr(
         WebSearchTool,
         "search",
-        lambda *_: [{"title": "A", "url": "http://a", "snippet": "s"}]
+        lambda *_: [MockResult("A", "http://a", "s")]
     )
     monkeypatch.setattr(ArxivTool, "search", lambda *_: [])
     monkeypatch.setattr(Fetcher, "fetch", lambda *_: "content")

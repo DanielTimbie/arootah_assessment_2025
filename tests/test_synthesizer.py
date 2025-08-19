@@ -5,10 +5,20 @@ from src.agent.synthesizer import synthesize
 
 def test_synthesize_formats(monkeypatch: object):
     """Test synthesizer output formatting."""
-    def fake_chat(*_: object) -> object:
+    def fake_chat(*_args: object, **_kwargs: object) -> object:
         class Resp:
+            """Mock OpenAI response object."""
+
             def __init__(self) -> None:
-                content = "# Title\n\n- A\n\n**Key Takeaways**\n- K1\n\n[1] Ref"
+                content = """{
+                    "title": "Test Brief",
+                    "outline": {
+                        "Section 1": ["Point A", "Point B"]
+                    },
+                    "key_takeaways": ["Key insight 1", "Key insight 2"],
+                    "executive_summary": "Test summary with details.",
+                    "references": ["[1] Test Author, Test Title, Source, 2024, URL"]
+                }"""
                 msg = type("M", (), {"content": content})
                 self.choices = [type("C", (), {"message": msg()})()]
                 usage_type = type(
@@ -24,4 +34,5 @@ def test_synthesize_formats(monkeypatch: object):
     sources = [Source(id=1, kind="web", title="T", url="U", snippet="S", content="C")]
     res = synthesize("p", sources, run_id="r1")
     assert "Key Takeaways" in res.markdown
+    assert "Test Brief" in res.markdown
     assert res.tokens_input == 10

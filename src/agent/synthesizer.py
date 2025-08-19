@@ -1,14 +1,17 @@
 """content synthesis from search results."""
+
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from openai import OpenAI
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from .config import settings
 from .cost import estimate_cost
-from .models import AgentResult, Source
+from .models import AgentResult, BriefStructure, Source
 from .telemetry import log_cost_metrics, log_event, trace
 
 if TYPE_CHECKING:
@@ -23,13 +26,14 @@ try:
     with (prompts_dir / "synthesis_prompt.txt").open(encoding="utf-8") as f:
         SYNTH = f.read()
 except FileNotFoundError as e:
-    msg = (
+    error_msg = (
         f"Prompt files not found in {prompts_dir}. Please ensure the prompts directory "
         f"exists with required files."
     )
-    raise FileNotFoundError(msg) from e
+    raise FileNotFoundError(error_msg) from e
 
 client = OpenAI(api_key=settings.openai_api_key)
+
 
 def synthesize(user_prompt: str, sources: list[Source], run_id: str) -> AgentResult:
     """synthesize sources into markdown response."""
@@ -80,10 +84,8 @@ def synthesize(user_prompt: str, sources: list[Source], run_id: str) -> AgentRes
             {"role": "user", "content": user_content},
         ]
 
-        # rough estimation
         estimated_input_tokens = (
-            len(messages[0]["content"])
-            + len(messages[1]["content"]) // 4
+            len(messages[0]["content"]) + len(messages[1]["content"]) // 4
         )
         log_event(
             run,
@@ -97,9 +99,7 @@ def synthesize(user_prompt: str, sources: list[Source], run_id: str) -> AgentRes
             },
         )
 
-        resp = client.chat.completions.create(
-            model=settings.openai_model, messages=messages, temperature=0
-        )
+        resp = _synthesize_with_retry(messages)
         content = resp.choices[0].message.content
         usage = resp.usage
         prompt_tokens = int(getattr(usage, "prompt_tokens", 0))
@@ -120,21 +120,31 @@ def synthesize(user_prompt: str, sources: list[Source], run_id: str) -> AgentRes
             },
         )
 
-        has_citations = content is not None and "[" in content and "]" in content
-        has_sections = content is not None and "#" in content
-        content_len = len(content) if content else 0
-        log_event(
-            run,
-            "reasoning",
-            inputs={"step": "quality_check"},
-            outputs={
-                "thought": (
-                    f"Synthesis quality check - Has citations: {has_citations}, "
-                    f"Has sections: {has_sections}, Length: {content_len} chars. "
-                    f"Ready to return executive brief."
-                )
-            },
-        )
+        try:
+            brief_data = json.loads(content) if content else {}
+            brief = BriefStructure.model_validate(brief_data)
+            markdown = _convert_to_markdown(brief)
+
+            log_event(
+                run,
+                "reasoning",
+                inputs={"step": "json_parsing"},
+                outputs={
+                    "thought": (
+                        f"Parsed structured brief with {len(brief.outline)} sections, "
+                        f"{len(brief.key_takeaways)} takeaways, "
+                        f"{len(brief.references)} references"
+                    )
+                },
+            )
+        except (json.JSONDecodeError, ValueError) as e:
+            log_event(
+                run,
+                "reasoning",
+                inputs={"step": "fallback"},
+                outputs={"thought": f"JSON parsing failed: {e}. Using raw content."},
+            )
+            markdown = content or ""
 
         log_cost_metrics(
             run,
@@ -152,10 +162,44 @@ def synthesize(user_prompt: str, sources: list[Source], run_id: str) -> AgentRes
             outputs={"tokens_in": prompt_tokens, "tokens_out": completion_tokens},
         )
         return AgentResult(
-            markdown=content or "",
+            markdown=markdown,
             references=sources,
             tokens_input=prompt_tokens,
             tokens_output=completion_tokens,
             cost_usd=cost,
             run_id=run_id,
         )
+
+
+def _convert_to_markdown(brief: BriefStructure) -> str:
+    """Convert structured brief to markdown format."""
+    lines = [f"# {brief.title}", ""]
+
+    lines.append("## Outline")
+    for section, bullets in brief.outline.items():
+        lines.append(f"### {section}")
+        lines.extend(f"- {bullet}" for bullet in bullets)
+        lines.append("")
+
+    lines.append("## Key Takeaways")
+    lines.extend(f"- {takeaway}" for takeaway in brief.key_takeaways)
+    lines.append("")
+
+    lines.append("## Executive Summary")
+    lines.append(brief.executive_summary)
+    lines.append("")
+
+    lines.append("## References")
+    lines.extend(brief.references)
+
+    return "\n".join(lines)
+
+@retry(wait=wait_exponential(multiplier=1, min=1, max=10), stop=stop_after_attempt(3))
+def _synthesize_with_retry(messages: list) -> object:
+    """Synthesize with retry logic."""
+    return client.chat.completions.create(
+        model=settings.openai_model,
+        messages=messages,
+        temperature=0,
+        response_format={"type": "json_object"},
+    )
