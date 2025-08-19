@@ -1,8 +1,16 @@
-import structlog, logging
+"""logging configuration setup."""
+import logging
+
+import structlog
+
 from .config import settings
 
+
 def setup_logging() -> None:
-    logging.basicConfig(level=getattr(logging, settings.log_level.upper(), logging.INFO))
+    """configure structured logging."""
+    logging.basicConfig(
+        level=getattr(logging, settings.log_level.upper(), logging.INFO)
+    )
     structlog.configure(
         processors=[
             structlog.processors.TimeStamper(fmt="iso"),
