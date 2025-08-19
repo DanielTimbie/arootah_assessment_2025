@@ -1,78 +1,85 @@
-"""langsmith telemetry and tracing."""
+"""LangSmith telemetry and tracing."""
 from __future__ import annotations
 
 import os
 import time
+import uuid
 from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any
+
+from langsmith import Client
+
+from .config import settings
 
 if TYPE_CHECKING:
     from collections.abc import Generator
 
-from langsmith import Client
-
-if TYPE_CHECKING:
-    from langsmith.schemas import Run
-
-from .config import settings
-
 if settings.langsmith_api_key:
-    os.environ["LANGCHAIN_TRACING_V2"] = "true"
-    os.environ["LANGCHAIN_API_KEY"] = settings.langsmith_api_key
-    os.environ["LANGCHAIN_PROJECT"] = settings.langsmith_project
+    os.environ["LANGSMITH_TRACING"] = "true"
+    os.environ["LANGSMITH_API_KEY"] = settings.langsmith_api_key
+    os.environ["LANGSMITH_PROJECT"] = settings.langsmith_project
+    os.environ["LANGSMITH_ENDPOINT"] = "https://api.smith.langchain.com"
 
-client: Client | None = (
-    Client(api_key=settings.langsmith_api_key) if settings.langsmith_api_key else None
+client = (
+    Client(api_key=settings.langsmith_api_key)
+    if settings.langsmith_api_key
+    else None
 )
+project_uuid = "037558d7-2e38-4171-9c03-8b0df02444bf"
+
 
 @contextmanager
 def trace(
     name: str, metadata: dict[str, Any] | None = None
-) -> Generator[Run | None, None, None]:
-    """context manager for langsmith run tracing."""
+) -> Generator[str, None, None]:
+    """Create LangSmith trace for operation."""
     if client and settings.langsmith_api_key:
+        run_id = str(uuid.uuid4())
         try:
-            run = client.create_run(
+            client.create_run(
                 name=name,
                 run_type="chain",
                 inputs=metadata or {},
-                project_name=settings.langsmith_project
+                project_name=project_uuid,
+                id=run_id,
             )
-            # Handle case where create_run returns None
-            if run is not None:
-                yield run
-                if hasattr(run, "id"):
-                    client.update_run(run.id, status="success")
-            else:
-                yield None
+            try:
+                yield run_id
+                client.update_run(run_id, status="success")
+            except Exception as e:
+                client.update_run(run_id, error=str(e), status="error")
+                raise
         except (OSError, ValueError, TypeError) as e:
             print(f"LangSmith trace error: {e}")
-            yield None
+            yield ""
     else:
-        yield None
+        yield ""
+
 
 def log_event(
-    run: Run | None,
+    run_id: str,
     name: str,
     inputs: dict[str, Any] | None = None,
     outputs: dict[str, Any] | None = None,
 ) -> None:
-    """log event to langsmith run."""
-    if client and run and hasattr(run, "id"):
+    """Log event to LangSmith run."""
+    if client and run_id:
         try:
             client.create_run(
                 name=name,
                 run_type="tool",
                 inputs=inputs or {},
                 outputs=outputs or {},
-                parent_run_id=run.id,
-                project_name=settings.langsmith_project
+                parent_run_id=run_id,
+                project_name=project_uuid,
+                id=str(uuid.uuid4()),
             )
         except (OSError, ValueError, TypeError) as e:
             print(f"LangSmith log_event error: {e}")
 
+
 def log_cost_metrics(
-    run: Run | None,
+    run_id: str,
     cost_usd: float,
     input_tokens: int,
     output_tokens: int,
@@ -80,9 +87,11 @@ def log_cost_metrics(
     user_prompt: str,
     n_sources: int,
 ) -> None:
-    """log cost and usage metrics to langsmith."""
-    if client and run and hasattr(run, "id"):
+    """Log cost and usage metrics to LangSmith."""
+    if client and run_id:
         try:
+            total_tokens = input_tokens + output_tokens
+            cost_per_token = cost_usd / total_tokens if total_tokens > 0 else 0
             client.create_run(
                 name="cost_metrics",
                 run_type="tool",
@@ -90,31 +99,28 @@ def log_cost_metrics(
                     "model": model,
                     "user_prompt": user_prompt[:200],
                     "n_sources": n_sources,
-                    "timestamp": time.time()
+                    "timestamp": time.time(),
                 },
                 outputs={
                     "cost_usd": cost_usd,
                     "input_tokens": input_tokens,
                     "output_tokens": output_tokens,
-                    "total_tokens": input_tokens + output_tokens,
-                    "cost_per_token": (
-                        cost_usd / (input_tokens + output_tokens)
-                        if (input_tokens + output_tokens) > 0
-                        else 0
-                    ),
+                    "total_tokens": total_tokens,
+                    "cost_per_token": cost_per_token,
                 },
-                parent_run_id=run.id,
-                project_name=settings.langsmith_project
+                parent_run_id=run_id,
+                project_name=project_uuid,
+                id=str(uuid.uuid4()),
             )
         except (OSError, ValueError, TypeError) as e:
             print(f"LangSmith cost_metrics error: {e}")
 
+
 def get_langsmith_metrics(hours: int = 24) -> dict[str, Any]:
-    """fetch langsmith metrics for time period."""
+    """Fetch LangSmith metrics for time period."""
     if not client:
-        msg = "LangSmith not configured. Set LANGSMITH_API_KEY and LANGSMITH_PROJECT"
         return {
-            "error": msg,
+            "error": "LangSmith not configured",
             "period_hours": hours,
             "total_requests": 0,
             "total_cost_usd": 0.0,
@@ -122,40 +128,35 @@ def get_langsmith_metrics(hours: int = 24) -> dict[str, Any]:
         }
 
     try:
-        runs = list(client.list_runs(
-            project_name=settings.langsmith_project,
-            limit=100
-        ))
-
+        runs = list(
+            client.list_runs(project_name=settings.langsmith_project, limit=100)
+        )
         cutoff_time = time.time() - (hours * 3600)
         recent_runs = []
 
         for run in runs:
-            run_time = getattr(run, "start_time", None)
-            if run_time and hasattr(run_time, "timestamp"):
-                if run_time.timestamp() > cutoff_time:
-                    recent_runs.append(run)
-            elif (
-                run_time
-                and isinstance(run_time, (int, float))
-                and run_time > cutoff_time
+            run_time = run.start_time if hasattr(run, "start_time") else None
+            if run_time and (
+                (hasattr(run_time, "timestamp") and run_time.timestamp() > cutoff_time)
+                or (isinstance(run_time, (int, float)) and run_time > cutoff_time)
             ):
                 recent_runs.append(run)
 
-        total_requests = len(
-            [r for r in recent_runs if getattr(r, "run_type", "") == "chain"]
-        )
-        cost_runs = [r for r in recent_runs if getattr(r, "name", "") == "cost_metrics"]
+        total_requests = len([
+            r for r in recent_runs
+            if hasattr(r, "run_type") and r.run_type == "chain"
+        ])
+        cost_runs = [
+            r for r in recent_runs
+            if hasattr(r, "name") and r.name == "cost_metrics"
+        ]
 
         total_cost = sum(
-            getattr(r, "outputs", {}).get("cost_usd", 0)
-            for r in cost_runs
+            r.outputs.get("cost_usd", 0) for r in cost_runs
             if hasattr(r, "outputs") and r.outputs
         )
-
         total_tokens = sum(
-            getattr(r, "outputs", {}).get("total_tokens", 0)
-            for r in cost_runs
+            r.outputs.get("total_tokens", 0) for r in cost_runs
             if hasattr(r, "outputs") and r.outputs
         )
 
@@ -169,11 +170,11 @@ def get_langsmith_metrics(hours: int = 24) -> dict[str, Any]:
             ),
             "langsmith_project": settings.langsmith_project,
             "langsmith_url": (
-                f"https://smith.langchain.com/projects/p/{settings.langsmith_project}"
+                f"https://smith.langchain.com/projects/p/"
+                f"{settings.langsmith_project}"
             ),
-            "runs_found": len(recent_runs)
+            "runs_found": len(recent_runs),
         }
-
     except (OSError, ValueError, TypeError) as e:
         return {
             "error": f"Failed to fetch LangSmith data: {e!s}",

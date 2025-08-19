@@ -112,8 +112,11 @@ def make_plan(user_prompt: str) -> Plan:
                 },
             )
             for step in data["plan"]:
+                # Handle various field name variations
                 if "type" in step and "kind" not in step:
                     step["kind"] = step.pop("type")
+                if "step" in step and "kind" not in step:
+                    step["kind"] = step.pop("step")
                 if "q" in step and "query" not in step:
                     step["query"] = step.pop("q")
 
